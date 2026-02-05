@@ -1,0 +1,125 @@
+version: 1
+domain: "sales"
+purpose: "Sales events + workflow mapping (Layer2)"
+
+# Workflow reference: erp-foundation/pm_ai/rules/workflow_states.yaml
+# Approval reference: erp-foundation/pm_ai/rules/approval_policies.yaml
+
+events:
+  # ---- Quote (見積) ----
+  - event_key: "quote.create"
+    event_type: "create"
+    external_impact: false
+    risk_level: "low"
+    workflow:
+      initial_state: "draft"
+      allowed_end_states: ["draft", "canceled"]
+    approval_policy_id: "p_none"
+    required_fields:
+      - customer_id
+      - items
+
+  - event_key: "quote.submit"
+    event_type: "submit"
+    external_impact: false
+    risk_level: "low"
+    workflow:
+      transition: "draft -> submitted"
+      end_state: "submitted"
+    approval_policy_id: "p_none"
+    required_fields:
+      - quote_id
+
+  - event_key: "quote.cancel"
+    event_type: "cancel"
+    external_impact: false
+    risk_level: "low"
+    workflow:
+      allowed_from_states: ["draft", "submitted"]
+      end_state: "canceled"
+    approval_policy_id: "p_none"
+    required_fields:
+      - quote_id
+
+  # ---- Order (受注) ----
+  - event_key: "order.create"
+    event_type: "create"
+    external_impact: false
+    risk_level: "low"
+    workflow:
+      initial_state: "draft"
+      allowed_end_states: ["draft", "canceled"]
+    approval_policy_id: "p_none"
+    required_fields:
+      - customer_id
+      - items
+
+  - event_key: "order.submit"
+    event_type: "submit"
+    external_impact: false
+    risk_level: "medium"
+    workflow:
+      transition: "draft -> submitted"
+      end_state: "submitted"
+    # If discount/exception/high amount/override => approval; otherwise can flow to executed via p_none
+    approval_policy_id: "p_sales_discount_exception"
+    required_fields:
+      - order_id
+      - total_amount
+      - discount_rate
+      - price_override
+      - permission_override
+      - actor_privilege_mismatch
+
+  - event_key: "order.approve"
+    event_type: "approve"
+    external_impact: false
+    risk_level: "medium"
+    workflow:
+      transition: "submitted -> approved"
+      end_state: "approved"
+    approval_policy_id: "p_none"
+    required_fields:
+      - order_id
+      - approval_id
+
+  - event_key: "order.reject"
+    event_type: "reject"
+    external_impact: false
+    risk_level: "low"
+    workflow:
+      transition: "submitted -> rejected"
+      end_state: "rejected"
+    approval_policy_id: "p_none"
+    required_fields:
+      - order_id
+      - approval_id
+
+  - event_key: "order.cancel"
+    event_type: "cancel"
+    external_impact: false
+    risk_level: "low"
+    workflow:
+      allowed_from_states: ["draft", "submitted", "approved"]
+      end_state: "canceled"
+    # cancel after approval can be tightened later; for now, require PM if permission override flagged
+    approval_policy_id: "p_sales_permission_override"
+    required_fields:
+      - order_id
+      - permission_override
+      - actor_privilege_mismatch
+
+  # ---- Sales Confirm (売上確定トリガ) ----
+  # Note: shipping/billing are separated domains. This event is internal "ready" signal.
+  - event_key: "sales.confirm_trigger"
+    event_type: "close"
+    external_impact: false
+    risk_level: "medium"
+    workflow:
+      transition: "approved -> executed -> closed"
+      end_state: "closed"
+    approval_policy_id: "p_sales_high_amount"
+    required_fields:
+      - order_id
+      - total_amount
+
